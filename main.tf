@@ -37,6 +37,18 @@ resource "azurerm_network_interface" "default" {
   }
 }
 
+resource "azurerm_network_interface" "windows" {
+  name                = "nic-windows-example"
+  location            = azurerm_resource_group.default.location
+  resource_group_name = azurerm_resource_group.default.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.default.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
 resource "azurerm_linux_virtual_machine" "default" {
   name                = "example-machine"
   resource_group_name = azurerm_resource_group.default.name
@@ -65,6 +77,30 @@ resource "azurerm_linux_virtual_machine" "default" {
   }
 }
 
+resource "azurerm_windows_virtual_machine" "windows" {
+  name                = "windows-machine"
+  resource_group_name = azurerm_resource_group.default.name
+  location            = azurerm_resource_group.default.location
+  size                = "Standard_D2s_v5"
+  admin_username      = "adminuser"
+  admin_password      = var.password
+  network_interface_ids = [
+    azurerm_network_interface.windows.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2019-Datacenter"
+    version   = "latest"
+  }
+}
+
 resource "azurerm_network_security_group" "default" {
   name                = "acceptanceTestSecurityGroup1"
   location            = azurerm_resource_group.default.location
@@ -83,9 +119,32 @@ resource "azurerm_network_security_group" "default" {
   }
 }
 
+resource "azurerm_network_security_group" "windows" {
+  name                = "windows"
+  location            = azurerm_resource_group.default.location
+  resource_group_name = azurerm_resource_group.default.name
+
+  security_rule {
+    name                       = "test123"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "3389"
+    source_address_prefix      = azurerm_subnet.bastion.address_prefixes[0]
+    destination_address_prefix = "*"
+  }
+}
+
 resource "azurerm_network_interface_security_group_association" "default" {
   network_interface_id      = azurerm_network_interface.default.id
   network_security_group_id = azurerm_network_security_group.default.id
+}
+
+resource "azurerm_network_interface_security_group_association" "windows" {
+  network_interface_id      = azurerm_network_interface.windows.id
+  network_security_group_id = azurerm_network_security_group.windows.id
 }
 
 resource "azurerm_public_ip" "default" {
@@ -96,18 +155,14 @@ resource "azurerm_public_ip" "default" {
   allocation_method   = "Static"
 }
 
-resource "azurerm_public_ip" "bastion" {
-  name                = "bastion-public-ip"
-  resource_group_name = azurerm_resource_group.default.name
-  location            = azurerm_resource_group.default.location
-  allocation_method   = "Static"
-}
-
 resource "azurerm_bastion_host" "default" {
   name                = "example-network-bastion"
   location            = azurerm_resource_group.default.location
   resource_group_name = azurerm_resource_group.default.name
   sku                 = "Standard"
+  tunneling_enabled   = true
+  ip_connect_enabled  = true
+  file_copy_enabled   = true
 
   ip_configuration {
     name                 = "IpConf"
